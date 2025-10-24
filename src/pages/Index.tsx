@@ -1,90 +1,56 @@
 import { useState } from "react";
 import { DocumentUpload } from "@/components/DocumentUpload";
-import { LanguageSelector } from "@/components/LanguageSelector";
-import { ProcessingStages, ProcessingStage } from "@/components/ProcessingStages";
-import { ResultsDisplay } from "@/components/ResultsDisplay";
+import { ModeSelector } from "@/components/ModeSelector";
+import { SingleTaskSelector } from "@/components/SingleTaskSelector";
+import { FileProcessingCard } from "@/components/FileProcessingCard";
+import { APISettings } from "@/components/APISettings";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FileText, Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { reconstructionAPI, ProcessingResult } from "@/lib/api";
 
 const Index = () => {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [selectedLanguage, setSelectedLanguage] = useState<string>("ben");
-  const [currentStage, setCurrentStage] = useState<ProcessingStage>("upload");
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [results, setResults] = useState<any[]>([]);
+  const [processingMode, setProcessingMode] = useState<'pipeline' | 'single'>('pipeline');
+  const [selectedTasks, setSelectedTasks] = useState<string[]>(['layout', 'ocr']);
+  const [isBackendConnected, setIsBackendConnected] = useState<boolean | null>(null);
   const { toast } = useToast();
 
   const handleFilesSelected = (files: File[]) => {
     setSelectedFiles(prev => [...prev, ...files]);
   };
 
-  const simulateProcessing = async () => {
-    if (selectedFiles.length === 0) {
+  const handleProcessFile = async (file: File, tasks: string[]) => {
+    try {
+      // Process file with backend API based on selected tasks
+      const layoutModel = tasks.includes('layout') ? 'docling_layout_v1' : '';
+      const ocrModel = tasks.includes('ocr') ? 'tesseract_default' : '';
+      const returnVisualization = tasks.includes('visualization');
+
+      const result = await reconstructionAPI.processFile(
+        file,
+        layoutModel,
+        ocrModel,
+        returnVisualization
+      );
+
+      // Store results (in a real app, you'd save to state or localStorage)
+      console.log('Processing result:', result);
+      
       toast({
-        title: "No files selected",
-        description: "Please upload at least one document to process",
-        variant: "destructive"
+        title: "Processing complete!",
+        description: `Successfully processed ${file.name}`,
       });
-      return;
+
+    } catch (error) {
+      console.error('Processing error:', error);
+      throw error;
     }
-
-    setIsProcessing(true);
-    const stages: ProcessingStage[] = [
-      "upload",
-      "tilt-correction", 
-      "layout-detection",
-      "ocr",
-      "cleaning",
-      "complete"
-    ];
-
-    for (let i = 0; i < stages.length; i++) {
-      setCurrentStage(stages[i]);
-      await new Promise(resolve => setTimeout(resolve, 1500));
-    }
-
-    // Simulate results
-    const mockResults = selectedFiles.map((file, index) => ({
-      filename: file.name,
-      language: selectedLanguage,
-      boxes: [
-        {
-          x1: 100,
-          y1: 100,
-          x2: 500,
-          y2: 150,
-          label: "Title",
-          text: "Sample Document Title",
-          confidence: 0.95
-        },
-        {
-          x1: 100,
-          y1: 200,
-          x2: 600,
-          y2: 400,
-          label: "Text",
-          text: "This is sample extracted text from the document. The actual OCR processing would be done by the backend service using YOLO for layout detection and Tesseract for text extraction.",
-          confidence: 0.89
-        }
-      ],
-      fullText: "Sample Document Title\n\nThis is sample extracted text from the document. The actual OCR processing would be done by the backend service using YOLO for layout detection and Tesseract for text extraction."
-    }));
-
-    setResults(mockResults);
-    setIsProcessing(false);
-
-    toast({
-      title: "Processing complete!",
-      description: `Successfully processed ${selectedFiles.length} document(s)`,
-    });
   };
 
   const handleReset = () => {
     setSelectedFiles([]);
-    setCurrentStage("upload");
-    setResults([]);
   };
 
   return (
@@ -96,7 +62,7 @@ const Index = () => {
             <div className="p-2 bg-primary/10 rounded-lg">
               <FileText className="w-6 h-6 text-primary" />
             </div>
-            <div>
+            <div className="flex-1">
               <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                 Document OCR Pipeline
               </h1>
@@ -104,70 +70,83 @@ const Index = () => {
                 Multi-language layout detection and text extraction
               </p>
             </div>
+            <div className="flex items-center gap-2">
+              {isBackendConnected === null && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <div className="w-2 h-2 rounded-full bg-gray-400"></div>
+                  <span>Backend status unknown</span>
+                </div>
+              )}
+              {isBackendConnected === true && (
+                <div className="flex items-center gap-2 text-sm text-success">
+                  <div className="w-2 h-2 rounded-full bg-success animate-pulse"></div>
+                  <span>Backend connected</span>
+                </div>
+              )}
+              {isBackendConnected === false && (
+                <div className="flex items-center gap-2 text-sm text-destructive">
+                  <div className="w-2 h-2 rounded-full bg-destructive"></div>
+                  <span>Backend disconnected</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
-        <div className="grid lg:grid-cols-3 gap-8">
-          {/* Left Column - Upload & Config */}
-          <div className="lg:col-span-2 space-y-6">
-            <Card className="p-6 animate-slide-up">
-              <div className="flex items-start gap-4 mb-6">
-                <Sparkles className="w-5 h-5 text-primary mt-1" />
-                <div>
-                  <h2 className="text-xl font-semibold mb-2">Get Started</h2>
-                  <p className="text-sm text-muted-foreground">
-                    This UI demonstrates the OCR pipeline from your uploaded Python code. 
-                    Upload documents, select the language, and process them through layout detection 
-                    and text extraction stages.
-                  </p>
-                </div>
-              </div>
-            </Card>
+        <div className="space-y-8">
+          {/* Mode Selection */}
+          <ModeSelector
+            selectedMode={processingMode}
+            onModeChange={setProcessingMode}
+          />
 
-      <DocumentUpload 
-        onFilesSelected={handleFilesSelected} 
-        selectedLanguage={selectedLanguage}
-      />
-
-            <LanguageSelector
-              selectedLanguage={selectedLanguage}
-              onLanguageChange={setSelectedLanguage}
+          {/* Single Task Selection (only show in single mode) */}
+          {processingMode === 'single' && (
+            <SingleTaskSelector
+              selectedTasks={selectedTasks}
+              onTaskChange={setSelectedTasks}
             />
+          )}
 
-            <div className="flex gap-3">
-              <Button 
-                onClick={simulateProcessing} 
-                disabled={isProcessing || selectedFiles.length === 0}
-                className="flex-1 transition-all duration-200"
-                size="lg"
-              >
-                {isProcessing ? "Processing..." : "Start Processing"}
-              </Button>
-              {(selectedFiles.length > 0 || results.length > 0) && (
+          {/* API Settings */}
+          <APISettings onConnectionChange={setIsBackendConnected} />
+
+          {/* Document Upload */}
+          <DocumentUpload 
+            onFilesSelected={handleFilesSelected} 
+          />
+
+          {/* File Processing Cards */}
+          {selectedFiles.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold">Uploaded Files</h2>
                 <Button 
                   onClick={handleReset} 
                   variant="outline"
-                  size="lg"
-                  className="transition-all duration-200"
+                  size="sm"
                 >
-                  Reset
+                  Clear All
                 </Button>
-              )}
+              </div>
+              
+              <div className="grid gap-4">
+                {selectedFiles.map((file, index) => (
+                  <FileProcessingCard
+                    key={index}
+                    file={file}
+                    index={index}
+                    onProcess={handleProcessFile}
+                    processingMode={processingMode}
+                    selectedTasks={selectedTasks}
+                  />
+                ))}
+              </div>
             </div>
-
-            {results.length > 0 && <ResultsDisplay results={results} />}
-          </div>
-
-          {/* Right Column - Pipeline Status */}
-          <div className="lg:col-span-1">
-            <ProcessingStages 
-              currentStage={currentStage} 
-              isProcessing={isProcessing}
-            />
-          </div>
+          )}
         </div>
 
         {/* Info Footer */}
@@ -177,11 +156,12 @@ const Index = () => {
             <div className="h-0.5 w-24 bg-primary rounded-full" />
           </h3>
           <ul className="space-y-2 text-sm text-muted-foreground">
-            <li>• <strong className="text-primary">Layout Detection:</strong> Uses YOLO model (yolov12l-doclaynet.pt) for detecting text regions</li>
-            <li>• <strong className="text-primary">OCR Engine:</strong> Tesseract OCR for multi-language text extraction</li>
-            <li>• <strong className="text-primary">Preprocessing:</strong> Automatic tilt correction using Hough Line Transform</li>
-            <li>• <strong className="text-primary">Post-processing:</strong> Language-specific text cleaning and error correction</li>
-            <li>• <strong className="text-primary">Backend Integration:</strong> Requires Python backend with YOLO and Tesseract dependencies</li>
+            <li>• <strong className="text-primary">Layout Detection:</strong> Uses DocLing layout model (docling_layout_v1) for detecting document regions</li>
+            <li>• <strong className="text-primary">OCR Engine:</strong> Tesseract OCR (tesseract_default) for multi-language text extraction</li>
+            <li>• <strong className="text-primary">API Endpoints:</strong> /infer-file for file uploads, /infer for base64 processing</li>
+            <li>• <strong className="text-primary">Visualization:</strong> Returns base64 encoded overlay images with detected regions</li>
+            <li>• <strong className="text-primary">Backend:</strong> FastAPI-based Reconstruction Backend with pluggable models</li>
+            <li>• <strong className="text-primary">Supported Formats:</strong> PNG, JPG, PDF files with real-time processing</li>
           </ul>
         </Card>
       </main>
